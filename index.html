@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>3BoardGame3</title>
+    <style>
+        /* --- THEMES --- */
+        :root {
+            /* DEFAULT: NEON */
+            --bg-app: #050505;
+            --bg-panel: rgba(20, 20, 25, 0.95);
+            --bg-board: #000;
+            --accent: #00f3ff;
+            --accent-2: #ff0050;
+            --text-main: #fff;
+            --text-dim: #888;
+            --grid-line: rgba(0, 243, 255, 0.2);
+            --grid-thick: 2px;
+            --house-bg: rgba(0, 243, 255, 0.05);
+            --house-border: rgba(255,255,255,0.3);
+            --font-ui: 'Segoe UI', sans-serif;
+            --shadow: 0 0 15px rgba(0,243,255,0.1);
+        }
+
+        body.theme-dark {
+            --bg-app: #1e1e1e;
+            --bg-panel: #252526;
+            --bg-board: #1e1e1e;
+            --accent: #3794ff;
+            --accent-2: #ff4d4d;
+            --text-main: #d4d4d4;
+            --text-dim: #808080;
+            --grid-line: rgba(255, 255, 255, 0.1);
+            --house-bg: #2d2d30;
+            --house-border: #3e3e42;
+            --shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+
+        body.theme-light {
+            --bg-app: #e0e0e0;
+            --bg-panel: #f3f3f3;
+            --bg-board: #ffffff;
+            --accent: #0066cc;
+            --accent-2: #cc0000;
+            --text-main: #333;
+            --text-dim: #666;
+            --grid-line: rgba(0, 0, 0, 0.15);
+            --house-bg: #f9f9f9;
+            --house-border: #ccc;
+            --shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        /* --- LAYOUT --- */
+        body { margin: 0; overflow: hidden; background: var(--bg-app); color: var(--text-main); font-family: var(--font-ui); display: flex; flex-direction: column; height: 100vh; }
+
+        /* MENU BAR */
+        #menubar {
+            height: 30px; background: var(--bg-panel); border-bottom: 1px solid var(--text-dim);
+            display: flex; align-items: center; padding: 0 10px; user-select: none; z-index: 2000;
+        }
+        .menu-item { padding: 5px 15px; cursor: pointer; font-size: 0.85rem; position: relative; }
+        .menu-item:hover { background: rgba(255,255,255,0.1); }
+        .dropdown {
+            display: none; position: absolute; top: 100%; left: 0;
+            background: var(--bg-panel); border: 1px solid var(--text-dim); min-width: 150px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .menu-item:hover .dropdown { display: block; }
+        .drop-opt { padding: 8px 15px; display: block; cursor: pointer; font-size: 0.8rem; }
+        .drop-opt:hover { background: var(--accent); color: #000; }
+
+        /* WORKSPACE */
+        #workspace { display: flex; flex-grow: 1; position: relative; overflow: hidden; }
+
+        /* PANELS */
+        #panel-left { width: 260px; background: var(--bg-panel); border-right: 1px solid var(--text-dim); display: flex; flex-direction: column; z-index: 100; }
+        #panel-right { width: 260px; background: var(--bg-panel); border-left: 1px solid var(--text-dim); display: flex; flex-direction: column; z-index: 100; }
+        
+        .panel-header {
+            padding: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
+            border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--accent); text-align: center;
+        }
+        .scroll-area { flex-grow: 1; overflow-y: auto; padding: 10px; }
+
+        /* CENTER (BOARD) */
+        #viewport {
+            flex-grow: 1; position: relative; overflow: hidden; background: var(--bg-board);
+            cursor: default; display: flex; flex-direction: column;
+        }
+        #viewport.panning { cursor: grab; }
+        #viewport.panning:active { cursor: grabbing; }
+
+        /* RULERS */
+        #ruler-top { height: 20px; display: flex; background: var(--bg-panel); overflow: hidden; margin-left: 20px; }
+        #ruler-left { width: 20px; display: flex; flex-direction: column; background: var(--bg-panel); overflow: hidden; position: absolute; top: 20px; bottom: 0; left: 0; z-index: 50; }
+        .ruler-cell { 
+            display: flex; align-items: center; justify-content: center; 
+            font-size: 0.6rem; color: var(--text-dim); border-right: 1px solid rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05);
+            box-sizing: border-box; flex-shrink: 0;
+        }
+
+        #scroll-container { flex-grow: 1; overflow: auto; position: relative; margin-left: 20px; }
+
+        #board-surface {
+            position: relative; margin: 50px; transform-origin: 0 0;
+            border: 1px solid var(--text-dim);
+            background-image: 
+                linear-gradient(var(--grid-line) var(--grid-thick), transparent var(--grid-thick)),
+                linear-gradient(90deg, var(--grid-line) var(--grid-thick), transparent var(--grid-thick));
+            box-shadow: var(--shadow);
+            transition: opacity 0.3s;
+        }
+
+        /* PLAY MODE & SPECTATOR: Hide Grid */
+        body.mode-play #board-surface, body.spectator-view #board-surface {
+            background-image: none; border: none; box-shadow: none;
+        }
+        body.mode-play .ruler-cell, body.spectator-view .ruler-cell { opacity: 0.3; }
+
+        /* MINIMAP */
+        #minimap-container { height: 200px; background: #000; position: relative; border-bottom: 1px solid var(--text-dim); overflow: hidden; }
+        #minimap { width: 100%; height: 100%; cursor: crosshair; }
+        #minimap-viewport { position: absolute; border: 2px solid var(--accent); box-sizing: border-box; pointer-events: none; }
+
+        /* CONTROLS */
+        .control-group { padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        label { display: block; color: var(--text-dim); font-size: 0.75rem; margin-bottom: 5px; text-transform: uppercase; }
+        input[type="text"], input[type="number"], input[type="color"] {
+            width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--text-dim); color: var(--text-main);
+            padding: 8px; border-radius: 4px; box-sizing: border-box; font-family: inherit; margin-bottom: 5px;
+        }
+        button {
+            width: 100%; padding: 8px; background: #333; color: white; border: none; border-radius: 4px;
+            cursor: pointer; text-transform: uppercase; font-size: 0.75rem; font-weight: bold; margin-bottom: 5px; transition: 0.2s;
+        }
+        button:hover { background: var(--accent); color: #000; }
+        button.btn-active { background: var(--accent); color: #000; box-shadow: 0 0 10px var(--accent); }
+        button.btn-danger { background: var(--accent-2); color: #fff; }
+        button.btn-danger:hover { box-shadow: 0 0 10px var(--accent-2); }
+
+        /* GAME PIECES */
+        .house {
+            position: absolute; box-sizing: border-box; border: 1px solid var(--house-border);
+            background: var(--house-bg); backdrop-filter: blur(2px);
+            display: flex; justify-content: center; align-items: center; color: var(--text-dim);
+            font-size: 0.8rem; z-index: 10; transition: 0.2s;
+        }
+        .house:hover { border-color: var(--text-main); z-index: 15; }
+        .house.selected { border: 2px solid var(--accent); box-shadow: 0 0 15px var(--accent); }
+        .house-label { pointer-events: none; background: rgba(0,0,0,0.7); padding: 2px 5px; border-radius: 4px; color: #fff; max-width: 90%; font-size: 0.7rem; }
+
+        .token {
+            width: 36px; height: 36px; border-radius: 50%; border: 2px solid #fff;
+            display: flex; justify-content: center; align-items: center; color: #fff; font-weight: 900;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index: 100; cursor: grab; font-size: 12px;
+            text-shadow: 0 1px 2px #000; transition: transform 0.1s;
+        }
+        .token:active { transform: scale(1.1); cursor: grabbing; }
+        .token.dead { filter: grayscale(100%); opacity: 0.6; border-style: dashed; }
+
+        /* ZONES */
+        #waiting-area { display: flex; flex-wrap: wrap; gap: 5px; min-height: 50px; padding-bottom: 10px; }
+        #graveyard { border: 1px dashed var(--accent-2); background: rgba(255,0,0,0.05); min-height: 60px; padding: 10px; display: flex; flex-wrap: wrap; gap: 5px; border-radius: 6px; }
+        .grave-text { width: 100%; text-align: center; color: var(--accent-2); font-size: 0.7rem; opacity: 0.7; }
+
+        /* MODALS & MENUS */
+        .hide-panels #panel-left, .hide-panels #panel-right { display: none; }
+        .spectator-view #menubar { display: none; } /* Spectator sees no menu */
+
+        #context-menu {
+            display: none; position: absolute; background: var(--bg-panel); border: 1px solid var(--accent);
+            z-index: 9999; box-shadow: 0 5px 15px rgba(0,0,0,0.5); min-width: 120px;
+        }
+        .ctx-item { padding: 10px; cursor: pointer; font-size: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .ctx-item:hover { background: var(--accent); color: black; }
+
+        #modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 5000; justify-content: center; align-items: center;
+        }
+        #modal-box {
+            background: var(--bg-panel); border: 1px solid var(--accent); padding: 30px;
+            max-width: 500px; color: var(--text-main); border-radius: 10px; box-shadow: 0 0 30px rgba(0, 243, 255, 0.2);
+        }
+        h2 { color: var(--accent); margin-top: 0; }
+        .info-row { margin-bottom: 10px; line-height: 1.5; font-size: 0.9rem; color: var(--text-dim); }
+        .contact { margin-top: 20px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); font-weight: bold; color: var(--text-main); }
+    </style>
+</head>
+<body class="theme-neon" oncontextmenu="return false;">
+
+    <!-- TOP MENU -->
+    <div id="menubar">
+        <div class="menu-item">3BoardGame3
+            <div class="dropdown">
+                <span class="drop-opt" onclick="toggleAbout()">About</span>
+            </div>
+        </div>
+        <div class="menu-item">FILE
+            <div class="dropdown">
+                <span class="drop-opt" onclick="saveGame()">Save to Drive (.json)</span>
+                <span class="drop-opt" onclick="document.getElementById('fileLoader').click()">Load from Drive</span>
+            </div>
+        </div>
+        <div class="menu-item">VIEW
+            <div class="dropdown">
+                <span class="drop-opt" onclick="togglePanels()">Toggle Panels</span>
+                <span class="drop-opt" onclick="toggleFullscreen()">Fullscreen</span>
+                <span class="drop-opt" onclick="openSpectator()">Open Spectator Board</span>
+            </div>
+        </div>
+        <div class="menu-item">THEME
+            <div class="dropdown">
+                <span class="drop-opt" onclick="setTheme('theme-neon')">Neon Cyber</span>
+                <span class="drop-opt" onclick="setTheme('theme-dark')">Dark Pro</span>
+                <span class="drop-opt" onclick="setTheme('theme-light')">Paper Light</span>
+            </div>
+        </div>
+        <div style="flex-grow:1"></div>
+        <div id="mode-display" style="font-weight:bold; color:var(--accent); font-size:0.8rem;">BUILD MODE</div>
+    </div>
+
+    <!-- MAIN WORKSPACE -->
+    <div id="workspace">
+        
+        <!-- LEFT PANEL -->
+        <div id="panel-left">
+            <div class="panel-header">Roster</div>
+            <div class="control-group">
+                <input type="text" id="p-name" placeholder="New Player Name">
+                <div style="display:flex; gap:5px">
+                    <input type="color" id="p-color" value="#00f3ff" style="height:35px; width:50px; padding:2px;">
+                    <button onclick="addPlayer()">Add Unit</button>
+                </div>
+            </div>
+            <div class="scroll-area">
+                <div id="waiting-area" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+                <div id="graveyard" ondrop="drop(event)" ondragover="allowDrop(event)">
+                    <div class="grave-text">CASUALTIES</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER VIEWPORT -->
+        <div id="viewport">
+            <div id="ruler-top"></div>
+            <div id="ruler-left"></div>
+            
+            <div id="scroll-container" onscroll="updateRulers()">
+                <div id="board-surface" onclick="handleMapClick(event)"></div>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL -->
+        <div id="panel-right">
+            <div id="minimap-container">
+                <canvas id="minimap"></canvas>
+                <div id="minimap-viewport"></div>
+            </div>
+            
+            <div class="panel-header">Controls</div>
+            
+            <div class="control-group">
+                <label>Game Mode</label>
+                <div style="display:flex; gap:5px;">
+                    <button id="btn-build" class="btn-active" onclick="setMode('build')">Build</button>
+                    <button id="btn-play" onclick="setMode('play')">Play</button>
+                </div>
+                <div style="font-size:0.7rem; color:var(--text-dim); margin-top:5px; line-height:1.2;">
+                    * Play Mode hides the grid.
+                </div>
+            </div>
+
+            <div id="selection-panel" class="control-group" style="display:none; border-left: 2px solid var(--accent);">
+                <label style="color:var(--accent)">Selected House</label>
+                <input type="text" id="sel-name" placeholder="House Name">
+                <input type="color" id="sel-color" value="#ffffff" style="height:30px; padding:2px;">
+                <div style="display:flex; gap:5px; margin-top:5px;">
+                    <button onclick="updateHouse()">Update</button>
+                    <button class="btn-danger" onclick="deleteHouse()">Delete</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Dimensions</label>
+                <div style="display:flex; gap:5px">
+                    <input type="number" id="map-w" value="15" title="Cols">
+                    <input type="number" id="map-h" value="15" title="Rows">
+                </div>
+                <button onclick="resizeMap()">Resize Grid</button>
+                <label style="margin-top:10px">Zoom</label>
+                <input type="range" min="0.5" max="2.0" step="0.1" value="1.0" oninput="setZoom(this.value)" style="width:100%">
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTEXT MENU FOR PLAYERS -->
+    <div id="context-menu">
+        <div class="ctx-item" onclick="ctxRename()">Rename</div>
+        <div class="ctx-item" onclick="ctxColor()">Change Color</div>
+        <div class="ctx-item" onclick="ctxDelete()" style="color:var(--accent-2)">Delete Unit</div>
+    </div>
+
+    <!-- ABOUT MODAL -->
+    <div id="modal-overlay" onclick="toggleAbout()">
+        <div id="modal-box" onclick="event.stopPropagation()">
+            <h2>About 3BoardGame3</h2>
+            <div class="info-row"><strong>Build Mode:</strong> Click grid to place houses. Left click houses to edit.</div>
+            <div class="info-row"><strong>Play Mode:</strong> Drag players. Grid lines are hidden.</div>
+            <div class="info-row"><strong>Navigation:</strong> Hold Right Click to Pan. Scroll to move rulers.</div>
+            <div class="info-row"><strong>Players:</strong> Right click a token to Rename, Recolor or Delete.</div>
+            <div class="info-row"><strong>Spectator:</strong> Open "Spectator Board" to get a clean, sync-only view in a new window.</div>
+            <div class="contact">
+                Created by Alireza Zare<br>
+                3alirezare3@gmail.com
+            </div>
+            <button onclick="toggleAbout()" style="margin-top:20px">Close</button>
+        </div>
+    </div>
+
+    <input type="file" id="fileLoader" style="display:none" onchange="loadFile(this)" accept=".json">
+
+    <script>
+        /* --- CORE STATE --- */
+        const channel = new BroadcastChannel('game_sync');
+        let state = {
+            mode: 'build', zoom: 1.0,
+            cols: 15, rows: 15, cellSize: 80,
+            houses: [], players: []
+        };
+        let isSpectator = false;
+
+        /* --- SYNC LISTENER --- */
+        channel.onmessage = (ev) => {
+            if (ev.data.type === 'STATE_UPDATE') {
+                if(document.visibilityState === 'visible' || isSpectator) {
+                    loadState(ev.data.payload, false);
+                }
+            } else if (ev.data.type === 'REQUEST_SYNC') {
+                broadcastState();
+            }
+        };
+
+        if(window.opener) {
+            isSpectator = true;
+            document.title = "Spectator View - 3BoardGame3";
+            document.body.classList.add('spectator-view');
+            document.body.classList.add('hide-panels');
+            setTimeout(() => channel.postMessage({ type: 'REQUEST_SYNC' }), 500);
+        }
+
+        /* --- DOM --- */
+        const board = document.getElementById('board-surface');
+        const scrollCont = document.getElementById('scroll-container');
+        const viewport = document.getElementById('viewport');
+        const rulerTop = document.getElementById('ruler-top');
+        const rulerLeft = document.getElementById('ruler-left');
+        let selectedHouseId = null;
+
+        /* --- PANNING --- */
+        let isPanning = false, startX, startY, scrollLeft, scrollTop;
+        viewport.addEventListener('mousedown', (e) => {
+            if (e.button === 2) { // Right Click
+                isPanning = true; viewport.classList.add('panning');
+                startX = e.pageX; startY = e.pageY;
+                scrollLeft = scrollCont.scrollLeft; scrollTop = scrollCont.scrollTop;
+            }
+        });
+        window.addEventListener('mouseup', () => { isPanning = false; viewport.classList.remove('panning'); });
+        window.addEventListener('mousemove', (e) => {
+            if (!isPanning) return;
+            e.preventDefault();
+            const walkX = e.pageX - startX;
+            const walkY = e.pageY - startY;
+            scrollCont.scrollLeft = scrollLeft - walkX;
+            scrollCont.scrollTop = scrollTop - walkY;
+        });
+
+        /* --- INIT --- */
+        window.onload = () => { resizeMap(); drawMinimap(); };
+
+        /* --- MAP SYSTEM --- */
+        function getColLabel(n) {
+            let s = "";
+            while(n >= 0) {
+                s = String.fromCharCode(65 + (n % 26)) + s;
+                n = Math.floor(n / 26) - 1;
+            }
+            return s;
+        }
+
+        function resizeMap() {
+            if(!isSpectator) {
+                state.cols = parseInt(document.getElementById('map-w').value);
+                state.rows = parseInt(document.getElementById('map-h').value);
+                broadcastState();
+            }
+            renderGrid();
+        }
+
+        function renderGrid() {
+            const w = state.cols * state.cellSize;
+            const h = state.rows * state.cellSize;
+            
+            board.style.width = w + 'px';
+            board.style.height = h + 'px';
+            board.style.backgroundSize = `${state.cellSize}px ${state.cellSize}px`;
+
+            rulerTop.innerHTML = '';
+            rulerLeft.innerHTML = '';
+            
+            for(let c=0; c<state.cols; c++) {
+                let d = document.createElement('div');
+                d.className = 'ruler-cell';
+                d.style.width = (state.cellSize * state.zoom) + 'px';
+                d.style.height = '100%';
+                d.innerText = getColLabel(c);
+                rulerTop.appendChild(d);
+            }
+            rulerTop.style.width = (w * state.zoom) + 'px';
+
+            for(let r=0; r<state.rows; r++) {
+                let d = document.createElement('div');
+                d.className = 'ruler-cell';
+                d.style.height = (state.cellSize * state.zoom) + 'px';
+                d.style.width = '100%';
+                d.innerText = (r + 1);
+                rulerLeft.appendChild(d);
+            }
+            rulerLeft.style.height = (h * state.zoom) + 'px';
+            setZoom(state.zoom);
+        }
+
+        function setZoom(val) {
+            state.zoom = parseFloat(val);
+            board.style.transform = `scale(${state.zoom})`;
+            
+            Array.from(rulerTop.children).forEach(c => c.style.width = (state.cellSize * state.zoom) + 'px');
+            Array.from(rulerLeft.children).forEach(c => c.style.height = (state.cellSize * state.zoom) + 'px');
+            rulerTop.style.width = (state.cols * state.cellSize * state.zoom) + 'px';
+            rulerLeft.style.height = (state.rows * state.cellSize * state.zoom) + 'px';
+
+            drawMinimap();
+        }
+
+        function updateRulers() {
+            rulerTop.style.transform = `translateX(-${scrollCont.scrollLeft}px)`;
+            rulerLeft.style.transform = `translateY(-${scrollCont.scrollTop}px)`;
+            updateMinimapView();
+        }
+
+        /* --- HOUSE LOGIC --- */
+        function handleMapClick(e) {
+            if(state.mode !== 'build' || isPanning) return;
+
+            if(e.target.classList.contains('house') || e.target.parentElement.classList.contains('house')) {
+                let target = e.target.classList.contains('house') ? e.target : e.target.parentElement;
+                selectHouse(target.id);
+                e.stopPropagation(); return;
+            }
+
+            const rect = board.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / state.zoom;
+            const y = (e.clientY - rect.top) / state.zoom;
+            const snapX = Math.floor(x / state.cellSize) * state.cellSize;
+            const snapY = Math.floor(y / state.cellSize) * state.cellSize;
+
+            if(snapX < 0 || snapY < 0 || snapX >= (state.cols*state.cellSize) || snapY >= (state.rows*state.cellSize)) return;
+
+            const id = `h-${snapX}-${snapY}`;
+            if(!document.getElementById(id)) {
+                state.houses.push({ id, x: snapX, y: snapY, name: '', color: '' });
+                renderHouseDOM(state.houses[state.houses.length-1]);
+                broadcastState();
+            } else {
+                deselectHouse();
+            }
+        }
+
+        function renderHouseDOM(hData) {
+            let d = document.createElement('div');
+            d.className = 'house';
+            d.id = hData.id;
+            d.style.left = hData.x + 'px';
+            d.style.top = hData.y + 'px';
+            d.style.width = state.cellSize + 'px';
+            d.style.height = state.cellSize + 'px';
+            d.setAttribute('ondrop', 'drop(event)');
+            d.setAttribute('ondragover', 'allowDrop(event)');
+            if(hData.color) { d.style.backgroundColor = hData.color + '44'; d.style.borderColor = hData.color; }
+            if(hData.name) d.innerHTML = `<div class='house-label'>${hData.name}</div>`;
+            board.appendChild(d);
+            drawMinimap();
+        }
+
+        function selectHouse(id) {
+            selectedHouseId = id;
+            document.querySelectorAll('.house').forEach(h => h.classList.remove('selected'));
+            document.getElementById(id).classList.add('selected');
+            document.getElementById('selection-panel').style.display = 'block';
+            const hData = state.houses.find(h => h.id === id);
+            if(hData) {
+                document.getElementById('sel-name').value = hData.name;
+                document.getElementById('sel-color').value = hData.color || '#ffffff';
+            }
+        }
+
+        function deselectHouse() {
+            selectedHouseId = null;
+            document.querySelectorAll('.house').forEach(h => h.classList.remove('selected'));
+            document.getElementById('selection-panel').style.display = 'none';
+        }
+
+        function updateHouse() {
+            if(!selectedHouseId) return;
+            const h = state.houses.find(x => x.id === selectedHouseId);
+            h.name = document.getElementById('sel-name').value;
+            h.color = document.getElementById('sel-color').value;
+            document.getElementById(selectedHouseId).remove();
+            renderHouseDOM(h); selectHouse(h.id); broadcastState();
+        }
+
+        function deleteHouse() {
+            if(!selectedHouseId) return;
+            const el = document.getElementById(selectedHouseId);
+            if(el.querySelectorAll('.token').length > 0) return alert("Move players out first!");
+            el.remove();
+            state.houses = state.houses.filter(h => h.id !== selectedHouseId);
+            deselectHouse(); broadcastState(); drawMinimap();
+        }
+
+        /* --- PLAYER SYSTEM --- */
+        let contextTargetId = null;
+        const ctxMenu = document.getElementById('context-menu');
+
+        window.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
+
+        function addPlayer() {
+            const name = document.getElementById('p-name').value;
+            const color = document.getElementById('p-color').value;
+            if(!name) return;
+            const pData = { id: 'u-'+Date.now(), name: name, color: color, parent: 'waiting-area', dead: false };
+            state.players.push(pData);
+            renderPlayerDOM(pData);
+            document.getElementById('p-name').value = '';
+            broadcastState();
+        }
+
+        function renderPlayerDOM(p) {
+            let el = document.getElementById(p.id);
+            if(!el) {
+                el = document.createElement('div');
+                el.className = 'token';
+                el.id = p.id;
+                el.draggable = true;
+                el.ondragstart = drag;
+                el.oncontextmenu = (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    contextTargetId = p.id;
+                    ctxMenu.style.top = e.pageY + 'px';
+                    ctxMenu.style.left = e.pageX + 'px';
+                    ctxMenu.style.display = 'block';
+                };
+            }
+            el.innerText = p.name.substring(0,2).toUpperCase();
+            el.style.backgroundColor = p.color;
+            el.style.boxShadow = `0 0 10px ${p.color}`;
+            el.title = p.name;
+            if(p.dead) el.classList.add('dead'); else el.classList.remove('dead');
+            const parent = document.getElementById(p.parent) || document.getElementById('waiting-area');
+            parent.appendChild(el);
+        }
+
+        /* --- CONTEXT MENU ACTIONS --- */
+        function ctxRename() {
+            const p = state.players.find(x => x.id === contextTargetId);
+            const n = prompt("Rename:", p.name);
+            if(n) { p.name = n; renderPlayerDOM(p); broadcastState(); }
+        }
+        function ctxColor() {
+            const p = state.players.find(x => x.id === contextTargetId);
+            // Quick hack: trigger hidden color input or just prompt hex
+            // For simplicity, we assume they know hex or we can add a simple input
+            // Let's use a hidden input on the body
+            let picker = document.createElement('input');
+            picker.type = 'color';
+            picker.value = p.color;
+            picker.onchange = (e) => {
+                p.color = e.target.value; renderPlayerDOM(p); broadcastState();
+            };
+            picker.click();
+        }
+        function ctxDelete() {
+            if(confirm("Permanently delete this unit?")) {
+                document.getElementById(contextTargetId).remove();
+                state.players = state.players.filter(x => x.id !== contextTargetId);
+                broadcastState();
+            }
+        }
+
+        /* --- DRAG DROP --- */
+        function allowDrop(e) { e.preventDefault(); }
+        function drag(e) { e.dataTransfer.setData("text", e.target.id); }
+        function drop(e) {
+            e.preventDefault();
+            const id = e.dataTransfer.getData("text");
+            const token = document.getElementById(id);
+            if(!token) return;
+            let target = e.target;
+            while(!target.classList.contains('house') && target.id !== 'waiting-area' && target.id !== 'graveyard') {
+                target = target.parentElement; if(!target) return;
+            }
+            const p = state.players.find(x => x.id === id);
+            p.parent = target.id;
+            p.dead = (target.id === 'graveyard');
+            renderPlayerDOM(p); broadcastState();
+        }
+
+        /* --- MINIMAP --- */
+        const canvas = document.getElementById('minimap');
+        const ctx = canvas.getContext('2d');
+        
+        function drawMinimap() {
+            canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const mapW = state.cols * state.cellSize;
+            const mapH = state.rows * state.cellSize;
+            const scale = Math.min(canvas.width / mapW, canvas.height / mapH);
+            state.houses.forEach(h => {
+                ctx.fillStyle = h.color || '#00f3ff';
+                ctx.fillRect(h.x * scale, h.y * scale, state.cellSize * scale, state.cellSize * scale);
+            });
+            updateMinimapView();
+        }
+
+        function updateMinimapView() {
+            const viewEl = document.getElementById('minimap-viewport');
+            const mapW = state.cols * state.cellSize;
+            const mapH = state.rows * state.cellSize;
+            const scale = Math.min(canvas.width / mapW, canvas.height / mapH);
+            const viewW = scrollCont.clientWidth / state.zoom;
+            const viewH = scrollCont.clientHeight / state.zoom;
+            
+            viewEl.style.width = (viewW * scale) + 'px';
+            viewEl.style.height = (viewH * scale) + 'px';
+            viewEl.style.left = ((scrollCont.scrollLeft / state.zoom) * scale) + 'px';
+            viewEl.style.top = ((scrollCont.scrollTop / state.zoom) * scale) + 'px';
+        }
+
+        /* --- UTILS --- */
+        function setMode(m) {
+            state.mode = m;
+            document.body.className = document.body.className.replace(/mode-\w+/g, '') + ' mode-' + m;
+            document.getElementById('btn-build').className = m === 'build' ? 'btn-active' : '';
+            document.getElementById('btn-play').className = m === 'play' ? 'btn-active' : '';
+            document.getElementById('mode-display').innerText = m.toUpperCase() + " MODE";
+            deselectHouse(); broadcastState();
+        }
+        function setTheme(t) {
+            let classes = document.body.className.split(' ').filter(c => !c.startsWith('theme-'));
+            classes.push(t);
+            document.body.className = classes.join(' ');
+        }
+        function togglePanels() { document.body.classList.toggle('hide-panels'); }
+        function toggleFullscreen() {
+            if(!document.fullscreenElement) document.documentElement.requestFullscreen();
+            else if(document.exitFullscreen) document.exitFullscreen();
+        }
+        function openSpectator() { window.open(window.location.href, '_blank', 'width=800,height=600'); }
+        function toggleAbout() {
+            const el = document.getElementById('modal-overlay');
+            el.style.display = el.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        function broadcastState() { if(!isSpectator) channel.postMessage({ type: 'STATE_UPDATE', payload: state }); }
+        
+        function loadState(newState, broadcast = false) {
+            state = newState;
+            if(!isSpectator) {
+                document.getElementById('map-w').value = state.cols;
+                document.getElementById('map-h').value = state.rows;
+                setMode(state.mode);
+            }
+            renderGrid();
+            document.querySelectorAll('.house').forEach(e => e.remove());
+            state.houses.forEach(h => renderHouseDOM(h));
+            document.getElementById('waiting-area').innerHTML = '';
+            document.getElementById('graveyard').innerHTML = '<div class="grave-text">CASUALTIES</div>';
+            state.players.forEach(p => renderPlayerDOM(p));
+            if(broadcast) broadcastState();
+        }
+
+        function saveGame() {
+            const blob = new Blob([JSON.stringify(state)], {type: 'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = '3BoardGame3_Save.json';
+            a.click();
+        }
+
+        function loadFile(input) {
+            const reader = new FileReader();
+            reader.onload = (e) => loadState(JSON.parse(e.target.result), true);
+            if(input.files[0]) reader.readAsText(input.files[0]);
+        }
+    </script>
+</body>
+</html>
